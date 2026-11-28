@@ -56702,7 +56702,7 @@
         "tags": ["image", "paste"],
         "title": "Paste Image",
         "type": "object",
-        "version": "1.2.2",
+        "version": "1.2.3",
         "output": {
           "$ref": "#/components/schemas/ImageOutput"
         }

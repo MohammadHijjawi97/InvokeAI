@@ -10,6 +10,7 @@ from PIL import Image, ImageFilter
 
 from invokeai.app.invocations.image import (
     ImageField,
+    ImagePasteInvocation,
     MaskFromAlphaInvocation,
     OklabUnsharpMaskInvocation,
     OklchImageHueAdjustmentInvocation,
@@ -127,6 +128,45 @@ def test_mask_from_alpha_uses_palette_transparency() -> None:
     palette_image.info["transparency"] = 0
 
     assert _invoke_mask_from_alpha(palette_image) == [0, 255, 0]
+
+
+@pytest.mark.parametrize(
+    ("base_color", "expected"),
+    [
+        # Half-strength red over opaque white is pink, not a darkened red.
+        ((255, 255, 255, 255), (255, 128, 128, 255)),
+        # Over a transparent base the pasted color stays red; only its alpha follows the mask.
+        ((0, 0, 0, 0), (255, 0, 0, 127)),
+    ],
+)
+def test_image_paste_soft_mask_blends_without_darkening(
+    base_color: tuple[int, int, int, int], expected: tuple[int, int, int, int]
+) -> None:
+    images = {
+        "base": Image.new("RGBA", (4, 4), base_color),
+        "image": Image.new("RGBA", (2, 2), (255, 0, 0, 255)),
+        # The node inverts the mask: 128 pastes the image at 127/255 strength.
+        "mask": Image.new("L", (2, 2), 128),
+    }
+    context = MagicMock()
+    context.images.get_pil.side_effect = lambda image_name, mode=None: images[image_name].convert(mode)
+    context.images.save.side_effect = lambda image: SimpleNamespace(
+        image_name="out", width=image.width, height=image.height
+    )
+
+    ImagePasteInvocation(
+        base_image=ImageField(image_name="base"),
+        image=ImageField(image_name="image"),
+        mask=ImageField(image_name="mask"),
+        x=1,
+        y=1,
+    ).invoke(context)
+    result = numpy.asarray(context.images.save.call_args.kwargs["image"], dtype=numpy.int16)
+
+    pasted = result[1:3, 1:3].reshape(-1, 4)
+    assert numpy.abs(pasted - numpy.array(expected)).max() <= 1
+    # Pixels outside the pasted image keep the base color.
+    assert tuple(result[0, 0]) == base_color
 
 
 def test_image_collection_invocation_preserves_existing_collection_values() -> None:

@@ -179,7 +179,7 @@ class CenterPadCropInvocation(BaseInvocation):
     title="Paste Image",
     tags=["image", "paste"],
     category="image",
-    version="1.2.2",
+    version="1.2.3",
 )
 class ImagePasteInvocation(BaseInvocation, WithMetadata, WithBoard):
     """Pastes an image into another image."""
@@ -211,9 +211,14 @@ class ImagePasteInvocation(BaseInvocation, WithMetadata, WithBoard):
         new_image = Image.new(mode="RGBA", size=(max_x - min_x, max_y - min_y), color=(0, 0, 0, 0))
         new_image.paste(base_image, (abs(min_x), abs(min_y)))
 
+        if mask is not None:
+            # Scale only the alpha: pasting through the mask would also scale the color toward the transparent
+            # black of temp_image, darkening every partially masked pixel.
+            image.putalpha(ImageChops.multiply(image.getchannel("A"), mask))
+
         # Create a temporary image to paste the image with transparency
         temp_image = Image.new("RGBA", new_image.size)
-        temp_image.paste(image, (max(0, self.x), max(0, self.y)), mask=mask)
+        temp_image.paste(image, (max(0, self.x), max(0, self.y)))
         new_image = Image.alpha_composite(new_image, temp_image)
 
         if self.crop:
